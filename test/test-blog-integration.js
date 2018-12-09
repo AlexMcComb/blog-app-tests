@@ -9,7 +9,7 @@ const mongoose = require('mongoose');
 // this module
 const expect = chai.expect;
 
-const {blog} = require('../models');
+const {BlogPost} = require('../models');
 const {app, runServer, closeServer} = require('../server');
 const {TEST_DATABASE_URL} = require('../config');
 
@@ -28,7 +28,7 @@ function seedBlogData() {
     seedData.push(generateBlogData());
   }
   // this will return a promise
-  return blog.insertMany(seedData);
+  return BlogPost.insertMany(seedData);
 }
 
 // used to generate data to put in db
@@ -50,7 +50,6 @@ function generateAuthor() {
   const authors = ['Ameila', 'Bob', 'Conor', 'Dane', 'Frank'];
   const author = authors[Math.floor(Math.random() * authors.length)];
   return {
-    date: faker.first_name(),
     author: author
   };
 }
@@ -63,10 +62,10 @@ function generateBlogData() {
     title: generateTitle(),
     content: generateContent(),
     author: {
-      firstName: faker.name.first_name(),
-      lastName: faker.name.last_name(),
+      firstName: faker.name.firstName(),
+      lastName: faker.name.firstName(),
     },
-    authors: [generateauthor(), generateauthor(), generateauthor()]
+    authors: [generateAuthor(), generateAuthor(), generateAuthor()]
   };
 }
 
@@ -210,7 +209,7 @@ describe('blogs API resource', function() {
         content: 'futuristic fusion blogs'
       };
 
-      return blog
+      return BlogPost
         .findOne()
         .then(function(blog) {
           updateData.id = blog.id;
@@ -224,7 +223,7 @@ describe('blogs API resource', function() {
         .then(function(res) {
           expect(res).to.have.status(204);
 
-          return blog.findById(updateData.id);
+          return BlogPost.findById(updateData.id);
         })
         .then(function(blog) {
           expect(blog.name).to.equal(updateData.name);
@@ -243,7 +242,7 @@ describe('blogs API resource', function() {
 
       let blog;
 
-      return blog
+      return BlogPost
         .findOne()
         .then(function(_blog) {
           blog = _blog;
@@ -251,7 +250,7 @@ describe('blogs API resource', function() {
         })
         .then(function(res) {
           expect(res).to.have.status(204);
-          return blog.findById(blog.id);
+          return BlogPost.findById(blog.id);
         })
         .then(function(_blog) {
           expect(_blog).to.be.null;
