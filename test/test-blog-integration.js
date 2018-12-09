@@ -5,255 +5,238 @@ const chaiHttp = require('chai-http');
 const faker = require('faker');
 const mongoose = require('mongoose');
 
-// this makes the expect syntax available throughout
+// this makes the should syntax available throughout
 // this module
-const expect = chai.expect;
+const should = chai.should();
 
-const {BlogPost} = require('../models');
-const {app, runServer, closeServer} = require('../server');
-const {TEST_DATABASE_URL} = require('../config');
+const { BlogPost } = require('../models');
+const { closeServer, runServer, app } = require('../server');
+const { TEST_DATABASE_URL } = require('../config');
 
 chai.use(chaiHttp);
+
+// this function deletes the entire database.
+// we'll call it in an `afterEach` block below
+// to ensure  ata from one test does not stick
+// around for next one
+function tearDownDb() {
+  return new Promise((resolve, reject) => {
+    console.warn('Deleting database');
+    mongoose.connection.dropDatabase()
+      .then(result => resolve(result))
+      .catch(err => reject(err));
+  });
+}
+
 
 // used to put randomish documents in db
 // so we have data to work with and assert about.
 // we use the Faker library to automatically
 // generate placeholder values for author, title, content
 // and then we insert that data into mongo
-function seedBlogData() {
-  console.info('seeding blog data');
+function seedBlogPostData() {
+  console.info('seeding blog post data');
   const seedData = [];
-
-  for (let i=1; i<=10; i++) {
-    seedData.push(generateBlogData());
+  for (let i = 1; i <= 10; i++) {
+    seedData.push({
+      author: {
+        firstName: faker.name.firstName(),
+        lastName: faker.name.lastName()
+      },
+      title: faker.lorem.sentence(),
+      content: faker.lorem.text()
+    });
   }
   // this will return a promise
   return BlogPost.insertMany(seedData);
 }
 
-// used to generate data to put in db
-function generateTitle() {
-  const title = [
-    'Blog post 1', 'Blog post 2', 'Blog post 3', 'Blog post 4', 'Blog post 5'];
-  return title[Math.floor(Math.random() * title.length)];
-}
 
-// used to generate data to put in db
-function generateContent() {
-  const content = ['content 1', 'content 2', 'Content 3'];
-  return content[Math.floor(Math.random() * content.length)];
-}
+describe('blog posts API resource', function () {
 
-
-// used to generate data to put in db
-function generateAuthor() {
-  const authors = ['Ameila', 'Bob', 'Conor', 'Dane', 'Frank'];
-  const author = authors[Math.floor(Math.random() * authors.length)];
-  return {
-    author: author
-  };
-}
-
-// generate an object represnting a blog.
-// can be used to generate seed data for db
-// or request.body data
-function generateBlogData() {
-  return {
-    title: generateTitle(),
-    content: generateContent(),
-    author: {
-      firstName: faker.name.firstName(),
-      lastName: faker.name.firstName(),
-    },
-    authors: [generateAuthor(), generateAuthor(), generateAuthor()]
-  };
-}
-
-
-// this function deletes the entire database.
-// we'll call it in an `afterEach` block below
-// to ensure data from one test does not stick
-// around for next one
-function tearDownDb() {
-  console.warn('Deleting database');
-  return mongoose.connection.dropDatabase();
-}
-
-describe('blogs API resource', function() {
-
-  // we need each of these hook functions to return a promise
-  // otherwise we'd need to call a `done` callback. `runServer`,
-  // `seedBlogData` and `tearDownDb` each return a promise,
-  // so we return the value returned by these function calls.
-  before(function() {
+  before(function () {
     return runServer(TEST_DATABASE_URL);
   });
 
-  beforeEach(function() {
-    return seedBlogData();
+  beforeEach(function () {
+    return seedBlogPostData();
   });
 
-  afterEach(function() {
+  afterEach(function () {
+    // tear down database so we ensure no state from this test
+    // effects any coming after.
     return tearDownDb();
   });
 
-  after(function() {
+  after(function () {
     return closeServer();
   });
 
   // note the use of nested `describe` blocks.
   // this allows us to make clearer, more discrete tests that focus
   // on proving something small
-  describe('GET endpoint', function() {
+  describe('GET endpoint', function () {
 
-    it('should return all existing blogs', function() {
+    it('should return all existing posts', function () {
       // strategy:
-      //    1. get back all blogs returned by by GET request to `/blogs`
+      //    1. get back all posts returned by by GET request to `/posts`
       //    2. prove res has right status, data type
-      //    3. prove the number of blogs we got back is equal to number
+      //    3. prove the number of posts we got back is equal to number
       //       in db.
-      //
-      // need to have access to mutate and access `res` across
-      // `.then()` calls below, so declare it here so can modify in place
       let res;
       return chai.request(app)
-        .get('/blogs')
-        .then(function(_res) {
-          // so subsequent .then blocks can access response object
+        .get('/posts')
+        .then(_res => {
           res = _res;
-          expect(res).to.have.status(200);
+          res.should.have.status(200);
           // otherwise our db seeding didn't work
-          expect(res.body.blogs).to.have.lengthOf.at.least(1);
-          return blog.count();
+          res.body.should.have.lengthOf.at.least(1);
+
+          return BlogPost.count();
         })
-        .then(function(count) {
-          expect(res.body.blogs).to.have.lengthOf(count);
+        .then(count => {
+          // the number of returned posts should be same
+          // as number of posts in DB
+          res.body.should.have.lengthOf(count);
         });
     });
 
+    it('should return posts with right fields', function () {
+      // Strategy: Get back all posts, and ensure they have expected keys
 
-    it('should return blogs with right fields', function() {
-      // Strategy: Get back all blogs, and ensure they have expected keys
-
-      let resblog;
+      let resPost;
       return chai.request(app)
-        .get('/blogs')
-        .then(function(res) {
-          expect(res).to.have.status(200);
-          expect(res).to.be.json;
-          expect(res.body.blogs).to.be.a('array');
-          expect(res.body.blogs).to.have.lengthOf.at.least(1);
+        .get('/posts')
+        .then(function (res) {
 
-          res.body.blogs.forEach(function(blog) {
-            expect(blog).to.be.a('object');
-            expect(blog).to.include.keys(
-              'content', 'title', 'author');
+          res.should.have.status(200);
+          res.should.be.json;
+          res.body.should.be.a('array');
+          res.body.should.have.lengthOf.at.least(1);
+
+          res.body.forEach(function (post) {
+            post.should.be.a('object');
+            post.should.include.keys('id', 'title', 'content', 'author', 'created');
           });
-          resblog = res.body.blogs[0];
-          return blog.findById(resblog.id);
+          // just check one of the posts that its values match with those in db
+          // and we'll assume it's true for rest
+          resPost = res.body[0];
+          return BlogPost.findById(resPost.id);
         })
-        .then(function(blog) {
-
-          expect(resblog.content).to.equal(blog.content);
-          expect(resblog.title).to.equal(blog.title);
-
-          expect(resblog.author).to.equal(blog.author);
+        .then(post => {
+          resPost.title.should.equal(post.title);
+          resPost.content.should.equal(post.content);
+          resPost.author.should.equal(post.authorName);
         });
     });
   });
 
-  describe('POST endpoint', function() {
+  describe('POST endpoint', function () {
     // strategy: make a POST request with data,
-    // then prove that the blog we get back has
+    // then prove that the post we get back has
     // right keys, and that `id` is there (which means
     // the data was inserted into db)
-    it('should add a new blog', function() {
+    it('should add a new blog post', function () {
 
-      const newblog = generateBlogData();
+      const newPost = {
+        title: faker.lorem.sentence(),
+        author: {
+          firstName: faker.name.firstName(),
+          lastName: faker.name.lastName(),
+        },
+        content: faker.lorem.text()
+      };
 
       return chai.request(app)
-        .post('/blogs')
-        .send(newblog)
-        .then(function(res) {
-          expect(res).to.have.status(201);
-          expect(res).to.be.json;
-          expect(res.body).to.be.a('object');
-          expect(res.body).to.include.keys(
-            'content', 'title', 'author');
+        .post('/posts')
+        .send(newPost)
+        .then(function (res) {
+          res.should.have.status(201);
+          res.should.be.json;
+          res.body.should.be.a('object');
+          res.body.should.include.keys(
+            'id', 'title', 'content', 'author', 'created');
+          res.body.title.should.equal(newPost.title);
           // cause Mongo should have created id on insertion
-    
-          expect(res.body.content).to.equal(newblog.content);
-          expect(res.body.title).to.equal(newblog.title);
-
-          expect(resblog.author).to.equal(blog.author);
-          return blog.findById(res.body.id);
+          res.body.id.should.not.be.null;
+          res.body.author.should.equal(
+            `${newPost.author.firstName} ${newPost.author.lastName}`);
+          res.body.content.should.equal(newPost.content);
+          return BlogPost.findById(res.body.id);
         })
-        .then(function(blog) {
-          expect(blog.content).to.equal(newblog.content);
-          expect(blog.title).to.equal(newblog.title);
-          expect(blog.author).to.equal(newblog.author);
+        .then(function (post) {
+          post.title.should.equal(newPost.title);
+          post.content.should.equal(newPost.content);
+          post.author.firstName.should.equal(newPost.author.firstName);
+          post.author.lastName.should.equal(newPost.author.lastName);
         });
     });
   });
 
-  describe('PUT endpoint', function() {
+  describe('PUT endpoint', function () {
 
     // strategy:
-    //  1. Get an existing blog from db
-    //  2. Make a PUT request to update that blog
-    //  3. Prove blog returned by request contains data we sent
-    //  4. Prove blog in db is correctly updated
-    it('should update fields you send over', function() {
+    //  1. Get an existing post from db
+    //  2. Make a PUT request to update that post
+    //  4. Prove post in db is correctly updated
+    it('should update fields you send over', function () {
       const updateData = {
-        title: 'fofofofofofofof',
-        content: 'futuristic fusion blogs'
+        title: 'cats cats cats',
+        content: 'dogs dogs dogs',
+        author: {
+          firstName: 'foo',
+          lastName: 'bar'
+        }
       };
 
       return BlogPost
         .findOne()
-        .then(function(blog) {
-          updateData.id = blog.id;
+        .then(post => {
+          updateData.id = post.id;
 
-          // make request then inspect it to make sure it reflects
-          // data we sent
           return chai.request(app)
-            .put(`/blogs/${blog.id}`)
+            .put(`/posts/${post.id}`)
             .send(updateData);
         })
-        .then(function(res) {
-          expect(res).to.have.status(204);
-
+        .then(res => {
+          res.should.have.status(204);
           return BlogPost.findById(updateData.id);
         })
-        .then(function(blog) {
-          expect(blog.name).to.equal(updateData.name);
-          expect(blog.content).to.equal(updateData.content);
+        .then(post => {
+          post.title.should.equal(updateData.title);
+          post.content.should.equal(updateData.content);
+          post.author.firstName.should.equal(updateData.author.firstName);
+          post.author.lastName.should.equal(updateData.author.lastName);
         });
     });
   });
 
-  describe('DELETE endpoint', function() {
+  describe('DELETE endpoint', function () {
     // strategy:
-    //  1. get a blog
-    //  2. make a DELETE request for that blog's id
+    //  1. get a post
+    //  2. make a DELETE request for that post's id
     //  3. assert that response has right status code
-    //  4. prove that blog with the id doesn't exist in db anymore
-    it('delete a blog by id', function() {
+    //  4. prove that post with the id doesn't exist in db anymore
+    it('should delete a post by id', function () {
 
-      let blog;
+      let post;
 
       return BlogPost
         .findOne()
-        .then(function(_blog) {
-          blog = _blog;
-          return chai.request(app).delete(`/blogs/${blog.id}`);
+        .then(_post => {
+          post = _post;
+          return chai.request(app).delete(`/posts/${post.id}`);
         })
-        .then(function(res) {
-          expect(res).to.have.status(204);
-          return BlogPost.findById(blog.id);
+        .then(res => {
+          res.should.have.status(204);
+          return BlogPost.findById(post.id);
         })
-        .then(function(_blog) {
-          expect(_blog).to.be.null;
+        .then(_post => {
+          // when a variable's value is null, chaining `should`
+          // doesn't work. so `_post.should.be.null` would raise
+          // an error. `should.be.null(_post)` is how we can
+          // make assertions about a null value.
+          should.not.exist(_post);
         });
     });
   });
